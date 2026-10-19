@@ -72,7 +72,11 @@ export function JoinScreen({ busy, error, onSubmit, onEdit }: Props) {
           </button>
         </form>
 
-        <p className="join__hint">代號為 1 到 12 個字，中文、英文、數字、表情符號都可以。</p>
+        <p className="join__hint">
+          代號為 1 到 12 個字，中文、英文、數字、表情符號都可以。
+          <br />
+          不能使用「系統」「管理員」「admin」等保留代號，也不能包含看不見的特殊字元。
+        </p>
       </div>
     </main>
   )

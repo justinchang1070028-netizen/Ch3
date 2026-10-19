@@ -424,16 +424,32 @@ button:disabled {
   box-shadow: 0 4px 14px rgba(31, 40, 100, 0.3);
 }
 
+/* ---------- 正在輸入 ---------- */
+
+.typing {
+  flex: none;
+  /* 固定高度：有沒有人在輸入，這一行都一樣高，訊息區不會跳動 */
+  height: 26px;
+  padding: 2px 16px 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 22px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---------- 輸入區 ---------- */
 
 .composer {
   flex: none;
-  padding: 10px 12px calc(14px + env(safe-area-inset-bottom));
+  padding: 6px 12px calc(14px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 8px;
   background: var(--surface);
-  border-top: 1px solid var(--border);
 }
 
 .composer__over {
@@ -629,8 +645,13 @@ button:disabled {
     font-size: 13px;
   }
 
+  .typing {
+    padding: 2px 28px 0;
+    font-size: 13px;
+  }
+
   .composer {
-    padding: 16px 28px 20px;
+    padding: 8px 28px 20px;
   }
 
   .composer__row {

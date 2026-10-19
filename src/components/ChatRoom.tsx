@@ -5,17 +5,21 @@ import { ChevronIcon, LogoutIcon } from './Icons'
 import { MessageInput } from './MessageInput'
 import { MessageList } from './MessageList'
 import { OnlineList } from './OnlineList'
+import { TypingIndicator } from './TypingIndicator'
 
 interface Props {
   nickname: string
   items: TimelineItem[]
   members: string[]
   connection: ConnectionStatus
+  /** 正在輸入的人（已排除自己） */
+  typing: string[]
   onSend: (content: string) => Promise<void>
+  onTyping: () => void
   onLeave: () => void
 }
 
-export function ChatRoom({ nickname, items, members, connection, onSend, onLeave }: Props) {
+export function ChatRoom({ nickname, items, members, connection, typing, onSend, onTyping, onLeave }: Props) {
   // 手機版線上名單是否展開（電腦版名單常駐，這個狀態沒作用）
   const [onlineOpen, setOnlineOpen] = useState(false)
   const offline = connection === 'reconnecting'
@@ -57,7 +61,8 @@ export function ChatRoom({ nickname, items, members, connection, onSend, onLeave
         {offline && <ConnectionBanner />}
 
         <MessageList items={items} self={nickname} />
-        <MessageInput disabled={offline} onSend={onSend} />
+        <TypingIndicator names={typing} />
+        <MessageInput disabled={offline} onSend={onSend} onTyping={onTyping} />
       </div>
 
       {onlineOpen && (

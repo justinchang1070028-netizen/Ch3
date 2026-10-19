@@ -1,19 +1,21 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { charCount } from '../lib/nickname'
+import { MESSAGE_MAX } from '../lib/validate'
+import { RateLimitError } from '../services/chatService'
 import { SendIcon } from './Icons'
-
-const MESSAGE_MAX = 500
 
 interface Props {
   /** 斷線時暫停輸入 */
   disabled: boolean
   onSend: (content: string) => Promise<void>
+  /** 使用者正在輸入時呼叫（服務會自己節流） */
+  onTyping: () => void
 }
 
-export function MessageInput({ disabled, onSend }: Props) {
+export function MessageInput({ disabled, onSend, onTyping }: Props) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
   const field = useRef<HTMLTextAreaElement>(null)
 
   const length = charCount(text.trim())
@@ -31,12 +33,13 @@ export function MessageInput({ disabled, onSend }: Props) {
   async function submit() {
     if (!canSend) return
     setSending(true)
-    setFailed(false)
+    setFailure(null)
     try {
       await onSend(text.trim())
       setText('')
-    } catch {
-      setFailed(true) // 保留輸入的內容，讓使用者可以再送一次
+    } catch (error) {
+      // 保留輸入的內容，讓使用者可以再送一次
+      setFailure(error instanceof RateLimitError ? '送太快了，請稍等幾秒再送' : '送出失敗，請再試一次')
     } finally {
       setSending(false)
       field.current?.focus()
@@ -60,9 +63,9 @@ export function MessageInput({ disabled, onSend }: Props) {
           超過 {over} 字（-{over}）
         </p>
       )}
-      {failed && (
+      {failure && (
         <p className="composer__over" role="alert">
-          送出失敗，請再試一次
+          {failure}
         </p>
       )}
       <div className="composer__row">
@@ -77,7 +80,8 @@ export function MessageInput({ disabled, onSend }: Props) {
           placeholder={disabled ? '連線中斷，暫時無法輸入' : '輸入訊息…'}
           onChange={(event) => {
             setText(event.target.value)
-            setFailed(false)
+            setFailure(null)
+            if (event.target.value.trim()) onTyping()
           }}
           onKeyDown={handleKeyDown}
         />

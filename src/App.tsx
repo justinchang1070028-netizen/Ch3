@@ -27,7 +27,9 @@ export default function App() {
           items={chat.items}
           members={chat.members}
           connection={chat.connection}
+          typing={chat.typing}
           onSend={chat.send}
+          onTyping={chat.notifyTyping}
           onLeave={chat.leave}
         />
       )}

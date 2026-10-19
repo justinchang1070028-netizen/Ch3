@@ -2,6 +2,14 @@ import type { ConnectionStatus, JoinResult, Message, Notice } from '../types'
 
 export type Unsubscribe = () => void
 
+/** 送出太快，被頻率限制擋下（每個代號 10 秒最多 5 則）。畫面據此提示「請稍等幾秒」 */
+export class RateLimitError extends Error {
+  constructor() {
+    super('rate_limited')
+    this.name = 'RateLimitError'
+  }
+}
+
 /**
  * 聊天服務窗口：畫面和後端之間的唯一接口（docs/architecture.md 第 4、5 節）。
  *
@@ -13,7 +21,7 @@ export interface ChatService {
   join(nickname: string): Promise<JoinResult>
   /** 離開聊天室（其他人會立刻看到「離開了」，不等 30 秒） */
   leave(): Promise<void>
-  /** 送出訊息。連線中斷時會失敗（丟出錯誤） */
+  /** 送出訊息。連線中斷時會失敗（丟出錯誤）；送太快會丟出 RateLimitError */
   sendMessage(content: string): Promise<void>
   /** 取得最近 N 則訊息，由舊到新 */
   loadRecent(limit: number): Promise<Message[]>
@@ -31,4 +39,8 @@ export interface ChatService {
    * （docs/architecture.md 第 6.4 節第 5 點）
    */
   onKicked(cb: () => void): Unsubscribe
+  /** 通知其他人「我正在輸入」。每次輸入都可以呼叫，服務會自己節流 */
+  sendTyping(): void
+  /** 別人正在輸入（只在別人身上觸發，不包含自己） */
+  onTyping(cb: (nickname: string) => void): Unsubscribe
 }

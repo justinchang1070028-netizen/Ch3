@@ -6,8 +6,9 @@ import {
   type SupabaseClient,
 } from '@supabase/supabase-js'
 import { normalizeNickname } from '../lib/nickname'
+import { isValidMessageRow, isValidNickname, isValidPresenceMeta, type MessageRow, type PresenceMeta } from '../lib/validate'
 import type { ConnectionStatus, JoinResult, Message, Notice } from '../types'
-import type { ChatService, Unsubscribe } from './chatService'
+import { RateLimitError, type ChatService, type Unsubscribe } from './chatService'
 import { PresenceNotices } from './presenceNotices'
 
 /**
@@ -15,6 +16,9 @@ import { PresenceNotices } from './presenceNotices'
  * - 訊息：資料表 messages ＋ Realtime「資料庫變動通知」（Postgres Changes）
  * - 誰在線上、進出：Realtime Presence
  * - 主動按「離開」：自訂的廣播事件 member_left，讓其他人不用等 30 秒
+ * - 「正在輸入」：自訂的廣播事件 typing（節流，最多每 2.5 秒一次）
+ *
+ * 所有「別人送來的資料」（訊息、在線登記、廣播）收到後都先檢查格式（lib/validate.ts），不合格就丟掉。
  */
 
 const CHANNEL_NAME = 'chat-room'
@@ -23,18 +27,10 @@ const SYNC_TIMEOUT_MS = 4000
 const AFTER_TRACK_SYNC_MS = 1500
 const BACKFILL_LIMIT = 500
 const RETRY_MS = 3000
-
-interface PresenceMeta {
-  nickname: string
-  online_at: string
-}
-
-interface MessageRow {
-  id: number
-  nickname: string
-  content: string
-  created_at: string
-}
+/** 輸入中的通知，最短間隔：打字時不是每個字都送，省下即時訊息的額度 */
+const TYPING_THROTTLE_MS = 2500
+/** 資料庫的頻率限制錯誤（supabase/schema.sql 的 messages_rate_limit 觸發器丟出） */
+const RATE_LIMIT_MARK = 'rate_limited'
 
 interface PresenceEntry {
   key: string
@@ -94,6 +90,8 @@ export class SupabaseChatService implements ChatService {
   private noticeListeners: Listeners<Notice> = new Set()
   private connectionListeners: Listeners<ConnectionStatus> = new Set()
   private kickedListeners: Listeners<void> = new Set()
+  private typingListeners: Listeners<string> = new Set()
+  private lastTypingSent = 0
 
   private notices = new PresenceNotices((notice) => {
     if (this.connection === 'connected') this.noticeListeners.forEach((cb) => cb(notice))
@@ -147,8 +145,9 @@ export class SupabaseChatService implements ChatService {
       .on('presence', { event: 'join' }, (payload) => this.handlePresenceJoin(payload))
       .on('presence', { event: 'leave' }, (payload) => this.handlePresenceLeave(payload))
       .on('broadcast', { event: 'member_left' }, ({ payload }) => this.handleMemberLeft(payload?.nickname))
+      .on('broadcast', { event: 'typing' }, ({ payload }) => this.handleTyping(payload?.nickname))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) =>
-        this.handleInsert(payload.new as MessageRow),
+        this.handleInsert(payload.new),
       )
 
     try {
@@ -203,7 +202,10 @@ export class SupabaseChatService implements ChatService {
     // 不做樂觀更新：等 Realtime 把這筆新增事件推回來才顯示，所有人（含自己）走同一條路
     const { error } = await this.client.from('messages').insert({ nickname: this.self, content })
     trace('send done', error ? error.message : 'ok')
-    if (error) throw new Error(error.message)
+    if (error) {
+      if (error.message.includes(RATE_LIMIT_MARK)) throw new RateLimitError()
+      throw new Error(error.message)
+    }
   }
 
   async loadRecent(limit: number): Promise<Message[]> {
@@ -213,7 +215,7 @@ export class SupabaseChatService implements ChatService {
       .order('id', { ascending: false })
       .limit(limit)
     if (error) throw new Error(error.message)
-    const messages = (data as MessageRow[]).map(toMessage).reverse()
+    const messages = (data as unknown[]).filter(isValidMessageRow).map(toMessage).reverse()
     for (const message of messages) this.lastId = Math.max(this.lastId, message.id)
     return messages
   }
@@ -240,6 +242,18 @@ export class SupabaseChatService implements ChatService {
 
   onKicked(cb: () => void): Unsubscribe {
     return subscribe(this.kickedListeners, cb)
+  }
+
+  sendTyping(): void {
+    if (!this.channel || !this.ready || !this.self || this.connection !== 'connected') return
+    const now = Date.now()
+    if (now - this.lastTypingSent < TYPING_THROTTLE_MS) return
+    this.lastTypingSent = now
+    void this.channel.send({ type: 'broadcast', event: 'typing', payload: { nickname: this.self } })
+  }
+
+  onTyping(cb: (nickname: string) => void): Unsubscribe {
+    return subscribe(this.typingListeners, cb)
   }
 
   // ---- 連線 ----
@@ -312,7 +326,7 @@ export class SupabaseChatService implements ChatService {
       .order('id', { ascending: true })
       .limit(BACKFILL_LIMIT)
     if (error) throw new Error(error.message)
-    for (const row of data as MessageRow[]) {
+    for (const row of (data as unknown[]).filter(isValidMessageRow)) {
       this.lastId = Math.max(this.lastId, row.id)
       const message = toMessage(row)
       this.messageListeners.forEach((cb) => cb(message))
@@ -355,7 +369,7 @@ export class SupabaseChatService implements ChatService {
   private entries(): PresenceEntry[] {
     const state = this.channel?.presenceState<PresenceMeta>() ?? {}
     return Object.entries(state).flatMap(([key, metas]) =>
-      metas.map((meta) => ({ key, nickname: meta.nickname, onlineAt: meta.online_at })),
+      (metas as unknown[]).filter(isValidPresenceMeta).map((meta) => ({ key, nickname: meta.nickname, onlineAt: meta.online_at })),
     )
   }
 
@@ -419,13 +433,13 @@ export class SupabaseChatService implements ChatService {
     // 還沒登記完成時，連上當下會把「已經在線的人」都當成剛加入，不能提示；自己的也不提示
     trace('presence join', key === this.clientId ? 'self' : 'other', 'ready=', this.ready)
     if (!this.ready || key === this.clientId) return
-    for (const meta of newPresences as unknown as PresenceMeta[]) this.notices.userJoined(meta.nickname)
+    for (const meta of (newPresences as unknown[]).filter(isValidPresenceMeta)) this.notices.userJoined(meta.nickname)
   }
 
   private handlePresenceLeave({ key, leftPresences }: RealtimePresenceLeavePayload<Record<string, unknown>>): void {
     trace('presence leave', key === this.clientId ? 'self' : 'other', 'ready=', this.ready)
     if (!this.ready || key === this.clientId) return
-    for (const meta of leftPresences as unknown as PresenceMeta[]) {
+    for (const meta of (leftPresences as unknown[]).filter(isValidPresenceMeta)) {
       const pending = this.explicitLeft.get(meta.nickname)
       if (pending !== undefined) {
         // 這個人剛按過「離開」，提示已經顯示了，不要重複
@@ -438,7 +452,7 @@ export class SupabaseChatService implements ChatService {
   }
 
   private handleMemberLeft(nickname: unknown): void {
-    if (!this.ready || typeof nickname !== 'string' || nickname === this.self) return
+    if (!this.ready || !isValidNickname(nickname) || nickname === this.self) return
     const previous = this.explicitLeft.get(nickname)
     if (previous !== undefined) clearTimeout(previous)
     this.explicitLeft.set(
@@ -450,9 +464,18 @@ export class SupabaseChatService implements ChatService {
 
   // ---- 訊息 ----
 
-  private handleInsert(row: MessageRow): void {
+  private handleInsert(row: unknown): void {
+    if (!isValidMessageRow(row)) {
+      trace('drop invalid message', row)
+      return
+    }
     this.lastId = Math.max(this.lastId, row.id)
     const message = toMessage(row)
     this.messageListeners.forEach((cb) => cb(message))
+  }
+
+  private handleTyping(nickname: unknown): void {
+    if (!this.ready || !isValidNickname(nickname) || nickname === this.self) return
+    this.typingListeners.forEach((cb) => cb(nickname))
   }
 }

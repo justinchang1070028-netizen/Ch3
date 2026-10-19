@@ -18,6 +18,9 @@ export function DebugPanel({ controls }: { controls: MockDebugControls }) {
           <button type="button" onClick={controls.reconnect}>
             我恢復連線
           </button>
+          <button type="button" onClick={controls.fakeTyping}>
+            有人正在輸入
+          </button>
           <button type="button" onClick={controls.fakeJoin}>
             有人進來
           </button>

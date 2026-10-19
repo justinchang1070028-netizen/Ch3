@@ -1,6 +1,6 @@
 import { normalizeNickname } from '../lib/nickname'
 import type { ConnectionStatus, JoinResult, Message, Notice } from '../types'
-import type { ChatService, Unsubscribe } from './chatService'
+import { RateLimitError, type ChatService, type Unsubscribe } from './chatService'
 import { PresenceNotices } from './presenceNotices'
 
 /** 階段一的假聊天服務：全部在記憶體裡，用計時器模擬別人說話、進出。重新整理網頁就重來 */
@@ -26,6 +26,9 @@ const PHRASES = [
   'https://example.com/這是一個很長的連結只會顯示成文字不能點',
 ]
 const HISTORY_COUNT = 60
+/** 和資料庫的頻率限制一致：每個代號 10 秒最多 5 則（supabase/schema.sql） */
+const RATE_LIMIT_COUNT = 5
+const RATE_LIMIT_WINDOW_MS = 10000
 const MAX_KEPT_MESSAGES = 500
 
 /** 只在 ?debug 時顯示的測試按鈕，用來手動觸發難以等到的情況 */
@@ -42,6 +45,8 @@ export interface MockDebugControls {
   fakeExplicitLeave(): void
   /** 一位假使用者閃斷：8 秒後回來，不會出現任何提示 */
   fakeBlip(): void
+  /** 一位假使用者「正在輸入」 */
+  fakeTyping(): void
 }
 
 type Listeners<T> = Set<(value: T) => void>
@@ -71,6 +76,8 @@ export class MockChatService implements ChatService {
   private memberListeners: Listeners<string[]> = new Set()
   private noticeListeners: Listeners<Notice> = new Set()
   private connectionListeners: Listeners<ConnectionStatus> = new Set()
+  private typingListeners: Listeners<string> = new Set()
+  private sentAt: number[] = []
 
   private notices = new PresenceNotices((notice) => {
     if (this.connection === 'connected') this.noticeListeners.forEach((cb) => cb(notice))
@@ -105,6 +112,10 @@ export class MockChatService implements ChatService {
   async sendMessage(content: string): Promise<void> {
     if (this.self === null) throw new Error('尚未進入聊天室')
     if (this.connection !== 'connected') throw new Error('連線中斷')
+    const now = Date.now()
+    this.sentAt = this.sentAt.filter((t) => now - t < RATE_LIMIT_WINDOW_MS)
+    if (this.sentAt.length >= RATE_LIMIT_COUNT) throw new RateLimitError()
+    this.sentAt.push(now)
     await sleep(120)
     this.addMessage(this.self, content)
   }
@@ -132,6 +143,14 @@ export class MockChatService implements ChatService {
     const unsubscribe = subscribe(this.connectionListeners, cb)
     cb(this.connection)
     return unsubscribe
+  }
+
+  sendTyping(): void {
+    // 假資料版沒有別人需要知道
+  }
+
+  onTyping(cb: (nickname: string) => void): Unsubscribe {
+    return subscribe(this.typingListeners, cb)
   }
 
   onKicked(): Unsubscribe {
@@ -171,6 +190,10 @@ export class MockChatService implements ChatService {
       this.online.delete(name)
       this.notices.userLeft(name, true)
       this.emitMembers()
+    },
+    fakeTyping: () => {
+      const name = this.randomOnlineFake()
+      if (name) this.emitTyping(name)
     },
     fakeBlip: () => {
       const name = this.randomOnlineFake()
@@ -218,6 +241,10 @@ export class MockChatService implements ChatService {
     }
   }
 
+  private emitTyping(name: string): void {
+    if (this.connection === 'connected') this.typingListeners.forEach((cb) => cb(name))
+  }
+
   private randomOnlineFake(): string | undefined {
     const fakes = Array.from(this.online)
     return fakes.length > 0 ? pick(fakes) : undefined
@@ -238,7 +265,12 @@ export class MockChatService implements ChatService {
     const speak = () => {
       this.speakTimer = setTimeout(() => {
         const speaker = this.randomOnlineFake()
-        if (speaker) this.addMessage(speaker, pick(PHRASES))
+        if (speaker) {
+          this.emitTyping(speaker)
+          setTimeout(() => {
+            if (this.online.has(speaker)) this.addMessage(speaker, pick(PHRASES))
+          }, 1500)
+        }
         speak()
       }, 4000 + Math.random() * 8000)
     }
