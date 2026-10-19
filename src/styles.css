@@ -1,0 +1,693 @@
+/* 依 docs/design.md：手機優先；淺色、深色跟隨系統。文字對比都已按 4.5:1 挑選 */
+
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --border: #e1e5ee;
+  --text: #1b1f2a;
+  --muted: #5b6478;
+  --notice: #5f6779;
+  --accent: #4f5bd5;
+  --on-accent: #ffffff;
+  --bubble-other: #ffffff;
+  --bubble-other-border: #e1e5ee;
+  --input-bg: #f4f6fa;
+  --online: #1f9d6b;
+  --danger: #c0362c;
+  --banner-bg: #fff1cc;
+  --banner-text: #5c4200;
+  --banner-border: #f0d9a0;
+  --disabled-bg: #e9ecf3;
+  --disabled-text: #5a6376;
+  --send-disabled-bg: #d5d9e4;
+  --send-disabled-icon: #8a92a6;
+  --scrim: rgba(20, 24, 40, 0.35);
+  --shadow: 0 16px 40px rgba(20, 24, 40, 0.18);
+  --topbar-h: 60px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12141c;
+    --surface: #1c2030;
+    --border: #2c3146;
+    --text: #e8eaf2;
+    --muted: #9ca5bc;
+    --notice: #9ca5bc;
+    --bubble-other: #232840;
+    --bubble-other-border: #232840;
+    --input-bg: #12141c;
+    --online: #3dd598;
+    --danger: #ff8a80;
+    --banner-bg: #3a2e0e;
+    --banner-text: #f5d9a0;
+    --banner-border: #5a4616;
+    --disabled-bg: #1a1d2a;
+    --disabled-text: #8089a0;
+    --send-disabled-bg: #2c3146;
+    --send-disabled-icon: #6b7490;
+    --scrim: rgba(5, 6, 10, 0.6);
+    --shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- 載入中 ---------- */
+
+.loading {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* ---------- 輸入代號 ---------- */
+
+.join {
+  min-height: 100dvh;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.join__card {
+  width: 100%;
+  max-width: 342px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.join__intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.join__logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.join__title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.join__lead {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.join__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.join__label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.join__label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.join__counter {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.join__input {
+  width: 100%;
+  height: 52px;
+  padding: 0 16px;
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  font-size: 17px;
+}
+
+.join__input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.join__error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.join__submit {
+  height: 52px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.join__submit:disabled {
+  background: var(--send-disabled-bg);
+  color: var(--disabled-text);
+}
+
+.join__hint {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ---------- 聊天室整體 ---------- */
+
+.room {
+  position: relative;
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.room__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 頂部列 */
+
+.topbar {
+  flex: none;
+  height: var(--topbar-h);
+  padding: 0 12px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.online-toggle {
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--bg);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.online-toggle.is-open {
+  border-color: var(--accent);
+}
+
+.leave {
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 斷線提示列 */
+
+.banner {
+  flex: none;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--banner-bg);
+  color: var(--banner-text);
+  border-bottom: 1px solid var(--banner-border);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.banner__icon {
+  display: flex;
+  animation: spin 1.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner__icon {
+    animation: none;
+  }
+}
+
+/* ---------- 訊息區 ---------- */
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.messages__scroll {
+  height: 100%;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.messages__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.msg {
+  flex: none;
+  align-self: flex-start;
+  max-width: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.msg--own {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.msg__meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bubble {
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--bubble-other-border);
+  border-radius: 18px 18px 18px 6px;
+  background: var(--bubble-other);
+  font-size: 15px;
+  line-height: 1.5;
+  /* 保留換行；很長沒有空白的字串自動換行，不撐破版面 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg--own .bubble {
+  border-color: var(--accent);
+  border-radius: 18px 18px 6px 18px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.notice {
+  flex: none;
+  align-self: center;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--notice);
+  text-align: center;
+}
+
+.new-messages {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  min-height: 44px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(31, 40, 100, 0.3);
+}
+
+/* ---------- 輸入區 ---------- */
+
+.composer {
+  flex: none;
+  padding: 10px 12px calc(14px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.composer__over {
+  align-self: flex-end;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.composer__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.composer__field {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 140px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--input-bg);
+  /* 16px 以上，iPhone 才不會在點進輸入框時自動放大畫面 */
+  font-size: 16px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.composer__field.is-over {
+  border: 2px solid var(--danger);
+}
+
+.composer__field:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+}
+
+.composer__send {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 22px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.composer__send:disabled {
+  background: var(--send-disabled-bg);
+  color: var(--send-disabled-icon);
+}
+
+/* ---------- 線上名單 ---------- */
+
+.online__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--online);
+}
+
+.online__title {
+  padding: 0 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.online__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.online__item {
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.online__item--self {
+  font-weight: 700;
+}
+
+/* 手機：預設收起；展開時浮在訊息區上面 */
+.online {
+  display: none;
+  position: absolute;
+  top: calc(var(--topbar-h) + 8px);
+  left: 12px;
+  right: 12px;
+  z-index: 20;
+  max-height: calc(100dvh - var(--topbar-h) - 24px);
+  overflow-y: auto;
+  padding: 16px 8px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.online.is-open {
+  display: block;
+}
+
+.scrim {
+  position: absolute;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+  border: 0;
+  background: var(--scrim);
+}
+
+/* ---------- 電腦版：名單常駐右側 ---------- */
+
+@media (min-width: 768px) {
+  :root {
+    --topbar-h: 68px;
+  }
+
+  .topbar {
+    padding: 0 28px;
+  }
+
+  .topbar__title {
+    font-size: 20px;
+  }
+
+  .leave {
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .online-toggle,
+  .scrim {
+    display: none;
+  }
+
+  .online {
+    display: block;
+    position: static;
+    flex: none;
+    width: 280px;
+    max-height: none;
+    padding: 24px 12px;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .messages__scroll {
+    padding: 28px;
+    gap: 16px;
+  }
+
+  .msg {
+    max-width: 520px;
+  }
+
+  .msg__meta {
+    font-size: 13px;
+  }
+
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 20px 20px 20px 6px;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .msg--own .bubble {
+    border-radius: 20px 20px 6px 20px;
+  }
+
+  .notice {
+    font-size: 13px;
+  }
+
+  .composer {
+    padding: 16px 28px 20px;
+  }
+
+  .composer__row {
+    gap: 12px;
+  }
+
+  .composer__field {
+    min-height: 48px;
+    padding: 12px 20px;
+    border-radius: 24px;
+  }
+
+  .composer__send {
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+  }
+}
+
+/* ---------- 測試工具（只在網址加 ?debug 時出現）---------- */
+
+.debug {
+  position: fixed;
+  left: 8px;
+  /* 放在輸入區上方，不遮住輸入框 */
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 100;
+  max-width: calc(100vw - 16px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.debug__toggle {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 700;
+}
+
+.debug__body {
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.debug__body button {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  text-align: left;
+}
