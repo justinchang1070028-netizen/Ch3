@@ -4,6 +4,11 @@ import type { ChatService, Unsubscribe } from '../services/chatService'
 import type { ConnectionStatus, Message, TimelineItem } from '../types'
 
 const RECENT_COUNT = 50
+const TAKEN_MESSAGE = '這個代號已有人使用，請換一個'
+const KICKED_MESSAGE = '連線中斷期間，這個代號被別人使用了，請重新取名'
+/** 重新整理後自動進入：舊連線可能還沒被伺服器釋放，短暫重試幾次再放棄 */
+const RESUME_RETRIES = 3
+const RESUME_RETRY_DELAY_MS = 1500
 
 /** join＝輸入代號畫面；resuming＝記住了代號，正在自動進入；room＝聊天室 */
 export type Phase = 'join' | 'resuming' | 'room'
@@ -31,13 +36,30 @@ export function useChat(service: ChatService) {
     unsubscribers.current = []
   }, [])
 
+  /** 清掉聊天室狀態，回到輸入代號畫面 */
+  const backToJoin = useCallback(
+    (message: string | null) => {
+      unsubscribeAll()
+      clearNickname()
+      selfRef.current = ''
+      setNickname('')
+      setItems([])
+      setMembers([])
+      setConnection('connected')
+      setIncomingCount(0)
+      setError(message)
+      setPhase('join')
+    },
+    [unsubscribeAll],
+  )
+
   /** 進入聊天室：成功回傳 null，失敗回傳要顯示的錯誤文字 */
   const enter = useCallback(
     async (name: string): Promise<string | null> => {
       try {
         const result = await service.join(name)
         if (!result.ok) {
-          return result.reason === 'taken' ? '這個代號已有人使用，請換一個' : '這個代號不能使用'
+          return result.reason === 'taken' ? TAKEN_MESSAGE : '這個代號不能使用'
         }
         selfRef.current = name
         unsubscribeAll()
@@ -54,6 +76,7 @@ export function useChat(service: ChatService) {
           service.onNotice((notice) => setItems((prev) => [...prev, { kind: 'notice', notice }])),
           service.onMembers(setMembers),
           service.onConnection(setConnection),
+          service.onKicked(() => backToJoin(KICKED_MESSAGE)),
         ]
         const recent = await service.loadRecent(RECENT_COUNT)
         setItems((prev) => {
@@ -71,7 +94,7 @@ export function useChat(service: ChatService) {
         return '連線失敗，請稍後再試'
       }
     },
-    [service, unsubscribeAll],
+    [service, unsubscribeAll, backToJoin],
   )
 
   // 重新整理後：有記住代號就自動進入
@@ -80,14 +103,15 @@ export function useChat(service: ChatService) {
     resumed.current = true
     const stored = loadNickname()
     if (!stored) return
-    void enter(stored).then((message) => {
-      if (message) {
-        clearNickname()
-        setError(message)
-        setPhase('join')
+    void (async () => {
+      let message = await enter(stored)
+      for (let i = 0; i < RESUME_RETRIES && message === TAKEN_MESSAGE; i++) {
+        await new Promise((resolve) => setTimeout(resolve, RESUME_RETRY_DELAY_MS))
+        message = await enter(stored)
       }
-    })
-  }, [enter])
+      if (message) backToJoin(message)
+    })()
+  }, [enter, backToJoin])
 
   const join = useCallback(
     async (raw: string) => {
@@ -108,16 +132,8 @@ export function useChat(service: ChatService) {
   const leave = useCallback(async () => {
     unsubscribeAll()
     await service.leave()
-    clearNickname()
-    selfRef.current = ''
-    setNickname('')
-    setItems([])
-    setMembers([])
-    setConnection('connected')
-    setIncomingCount(0)
-    setError(null)
-    setPhase('join')
-  }, [service, unsubscribeAll])
+    backToJoin(null)
+  }, [service, unsubscribeAll, backToJoin])
 
   const send = useCallback((content: string) => service.sendMessage(content), [service])
 

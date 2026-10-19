@@ -1,7 +1,7 @@
 # 匿名聊天室 架構文件
 
 > 這份文件寫給不寫程式的人看。專有名詞第一次出現時，會用一句話解釋。
-> 本文件只做規劃，不含任何程式碼，也還沒安裝任何東西。
+> 本文件是規劃與設計說明，不含程式碼。階段一（假資料前端）已完成並上線；階段二（接上 Supabase）已實作，實作時與原規劃不同之處，都標示在對應段落。
 
 ---
 
@@ -120,7 +120,7 @@ Supabase 有很多功能，這個專案只用其中三個：
 - **Broadcast**（只轉發、不保存的廣播）：用它傳訊息，就得另外再寫一次資料表，等於做兩次事，而且兩邊可能對不起來。
 - **Supabase Auth**（登入功能）：這個專案刻意不登入。
 
-另外，Supabase 用**資料庫規則**來保護資料，叫 **RLS**（Row Level Security，列級安全）：它規定「誰可以對這張表做什麼」。我們設定的規則是：任何人都能讀、能新增（但內容要符合長度限制），**不能修改、不能刪除**。
+另外，Supabase 用**資料庫規則**來保護資料，叫 **RLS**（Row Level Security，列級安全）：它規定「誰可以對這張表做什麼」。我們設定的規則是：任何人都能讀、能新增（但內容要符合長度限制），**不能修改、不能刪除**。新增時只能填「代號」和「內容」，編號與時間一律由資料庫自己產生，不能偽造。實際的 SQL 在 `supabase/schema.sql`。
 
 ### 3.3 網站放哪裡、怎麼發佈
 
@@ -180,7 +180,9 @@ Supabase 有很多功能，這個專案只用其中三個：
 
 設定好自動發佈（第 12 節）後，每次把程式推上 GitHub，網站就會自動更新。你用手機打開那個網址，就能看到完整的聊天室畫面、用假資料操作。
 
-### 階段二：接上 Supabase
+### 階段二：接上 Supabase（已實作）
+
+> 實作後的差異：金鑰改用 Supabase 新版的 **Publishable key**（舊名 anon key，官方預計 2026 年底淘汰舊金鑰）。程式依環境決定用真的還是假的服務：有設定 Supabase 就用真的；沒設定，或網址加上 `?mock`，就用假資料。
 
 **會改變什麼：**
 
@@ -252,6 +254,7 @@ Supabase 有很多功能，這個專案只用其中三個：
 | `members_changed` | 目前完整的線上名單 | 更新線上名單與人數 |
 | `notice` | 一則系統提示 | 在列表中插入置中的灰色小字 |
 | `connection_changed` | `connected` 或 `reconnecting` | 顯示或收起斷線提示、暫停或恢復輸入框 |
+| `kicked` | 無內容 | 斷線重連後發現代號被別人佔走：服務已自行退出聊天室，畫面回到輸入代號並提示重新取名（第 6.4 節第 5 點） |
 
 **畫面對窗口下的指令**
 
@@ -404,12 +407,12 @@ Supabase 有很多功能，這個專案只用其中三個：
 | 名稱 | 這是什麼 | 能公開嗎 | 本專案會用嗎 |
 |---|---|---|---|
 | **專案網址**（Project URL） | 你的 Supabase 專案的網址，長得像 `https://xxxx.supabase.co` | 可以 | 會 |
-| **anon 金鑰**（又叫 publishable key，「可公開金鑰」） | 給網頁用的通行證，權限被資料庫規則限制住，只能做允許的事 | **可以公開** | 會 |
-| **service_role 金鑰**（又叫 secret key，「秘密金鑰」） | 管理員通行證，**無視所有資料庫規則**，什麼都能讀、改、刪 | **絕對不能公開** | **不使用，也不需要** |
+| **Publishable key**（舊名 anon 金鑰，「可公開金鑰」，`sb_publishable_` 開頭） | 給網頁用的通行證，權限被資料庫規則限制住，只能做允許的事 | **可以公開** | 會 |
+| **Secret key**（舊名 service_role 金鑰，「秘密金鑰」，`sb_secret_` 開頭） | 管理員通行證，**無視所有資料庫規則**，什麼都能讀、改、刪 | **絕對不能公開** | **不使用，也不需要** |
 | **資料庫密碼** | 建立 Supabase 專案時設定的密碼，用來直接連資料庫 | **絕對不能公開** | 不使用 |
 | **GitHub 的個人存取權杖** | 讓程式代替你操作 GitHub 的通行證 | **絕對不能公開** | 不使用（GitHub Pages 自動發佈有內建權限） |
 
-### 8.2 為什麼 anon 金鑰放在前端是安全的
+### 8.2 為什麼 Publishable key 放在前端是安全的
 
 GitHub Pages 是純靜態網站，**沒有任何地方能藏秘密**：只要網頁用得到的東西，使用者按 F12 就看得到。所以這把金鑰是「藏不住」的，也不需要藏。
 
@@ -421,10 +424,10 @@ GitHub Pages 是純靜態網站，**沒有任何地方能藏秘密**：只要網
 
 1. 登入 Supabase，建立一個新專案（專案建立時會要你設資料庫密碼，記在密碼管理員，不要存進專案資料夾）。
 2. 進入專案後，到左側選單的 **Project Settings（專案設定）→ API Keys**。
-3. 這裡會看到「專案網址」，以及 anon（或 publishable）金鑰、service_role（或 secret）金鑰。
-4. **只複製專案網址和 anon／publishable 金鑰。** 看到 service_role／secret 金鑰時，不要複製。
+3. 這裡會看到「專案網址」，以及 Publishable key、Secret key（另有舊版的 anon、service_role 金鑰分頁）。
+4. **只複製專案網址和 Publishable key。** 看到 Secret key 或 service_role 金鑰時，不要複製。
 
-> Supabase 近年調整過金鑰的名稱和介面，畫面上可能寫「Publishable key」而不是「anon key」，意思相同。階段二實作時我會對照當下的介面確認。
+> Supabase 近年調整過金鑰的名稱和介面：新版叫 Publishable／Secret key，舊版叫 anon／service_role，用途對應相同。本專案使用新版。新版介面的選單位置和舊文件不同，可以用頁面上方的搜尋框（Ctrl K）搜尋 `API Keys`。
 
 ### 8.4 放在哪裡
 
@@ -439,8 +442,8 @@ GitHub Pages 是純靜態網站，**沒有任何地方能藏秘密**：只要網
 
 程式裡會用到兩個設定值：
 
-- 專案網址
-- anon 金鑰
+- `VITE_SUPABASE_URL`：專案網址
+- `VITE_SUPABASE_PUBLISHABLE_KEY`：Publishable key
 
 名稱都以 `VITE_` 開頭，這是 Vite 的規定：只有 `VITE_` 開頭的設定值，才會被打包進網頁。**絕對不要**把 service_role 金鑰也取這種名字，更不要放進去。
 
@@ -479,6 +482,7 @@ GitHub Pages 是純靜態網站，**沒有任何地方能藏秘密**：只要網
 ### 9.2 已知限制（接受的風險）
 
 - **洗版：** 有技術的人可以用程式不斷送訊息。不登入的匿名聊天室很難根本防止。如果之後出現這個問題，可以在資料庫設定「每個代號每秒最多幾則」的規則。
+- **線上名單有時會慢 2 到 3 秒：** 實測在線名單的更新（有人進來、離開）偶爾要 2 到 3 秒才反映，訊息本身通常不到 1 秒。
 - **代號不是身份：** 任何人都能用任意代號送訊息（只要繞過網頁直接呼叫）。代號只在「對方還在線上期間」被獨占，它不證明任何事。
 - **訊息會一直累積：** 目前不自動刪除舊訊息。資料量小時沒影響（見下方免費額度），日後可加排程清理。
 
@@ -525,45 +529,53 @@ GitHub Pages 的免費額度（網站大小 1 GB、每月流量約 100 GB）對�
 
 > **repo**（repository）是存放整個專案所有檔案的資料夾，會同步到 GitHub。
 
-下面只是規劃，目前還沒有建立。
+下面是目前實際的結構（階段二完成後）：
 
 ```
 Ch3/
 ├── docs/                         文件
 │   ├── requirements.md             需求說明（你寫的）
-│   └── architecture.md             這份架構文件
+│   ├── architecture.md             這份架構文件
+│   └── design.md                   畫面設計結果（色彩、尺寸、各畫面元素）
 │
 ├── src/                          網頁的所有程式碼
-│   ├── main                        程式進入點
-│   ├── App                         決定顯示「輸入代號」或「聊天室」
+│   ├── main.tsx                    程式進入點
+│   ├── App.tsx                     決定顯示「輸入代號」或「聊天室」
+│   ├── styles.css                  全部樣式（淺色、深色、手機、電腦）
+│   ├── types.ts                    訊息、提示等共用的資料格式
 │   ├── components/                 畫面的各個元件
-│   │   ├── 輸入代號畫面
-│   │   ├── 聊天室整體版面
-│   │   ├── 訊息列表（含捲動、「有新訊息 ↓」）
-│   │   ├── 單則訊息／進出提示
-│   │   ├── 線上名單（電腦常駐、手機收合）
-│   │   ├── 訊息輸入區
-│   │   └── 斷線提示列
+│   │   ├── JoinScreen              輸入代號畫面
+│   │   ├── ChatRoom                聊天室整體版面
+│   │   ├── MessageList             訊息列表（含捲動、「有新訊息 ↓」）
+│   │   ├── MessageItem             單則訊息／進出提示
+│   │   ├── OnlineList              線上名單（電腦常駐、手機收合）
+│   │   ├── MessageInput            訊息輸入區
+│   │   ├── ConnectionBanner        斷線提示列
+│   │   ├── DebugPanel              測試工具（網址加 ?debug，只有假資料版有）
+│   │   └── Icons                   圖示
 │   ├── services/                 聊天服務窗口
-│   │   ├── 服務窗口的約定（第 5 節）
-│   │   ├── 假的窗口（階段一用）
-│   │   └── Supabase 的窗口（階段二用）
+│   │   ├── chatService.ts          服務窗口的約定（第 5 節）
+│   │   ├── mockChatService.ts      假的窗口（階段一）
+│   │   ├── supabaseChatService.ts  Supabase 的窗口（階段二）
+│   │   ├── presenceNotices.ts      「斷線 30 秒才算離開」規則，兩種窗口共用
+│   │   └── index.ts                決定用哪一個窗口
 │   ├── hooks/                    可重複使用的行為邏輯
-│   │   ├── 聊天狀態整合
-│   │   └── 分頁標題未讀數
+│   │   ├── useChat.ts              把服務窗口的結果轉成畫面狀態
+│   │   └── useUnreadTitle.ts       分頁標題未讀數
 │   └── lib/                      小工具
-│       └── 代號檢查、記住代號
+│       ├── nickname.ts             代號檢查、記住代號
+│       └── format.ts               時間格式、合併連續空行
 │
 ├── supabase/
-│   └── 資料庫設定說明（建表與權限規則）   階段二使用，留作紀錄
+│   └── schema.sql                建表、資料庫規則、即時通知（貼到 SQL Editor 執行）
 │
 ├── .github/workflows/
-│   └── 自動發佈到 GitHub Pages 的設定
+│   └── deploy.yml                自動發佈到 GitHub Pages
 │
-├── public/                       不需處理、直接使用的檔案（例如網頁圖示）
 ├── .env.example                  設定值範本（沒有真實金鑰，可公開）
 ├── .gitignore                    列出不要上傳的檔案（包含 .env.local）
-└── 其他專案設定檔                 （Vite、TypeScript 的設定，由工具產生）
+├── index.html、package.json、vite.config.ts、tsconfig.json   專案設定檔
+└── CLAUDE.md                     給 Claude 的專案說明
 ```
 
 **不會出現在 repo 裡的：** `.env.local`（真實金鑰）、`node_modules`（安裝出來的工具，很大且可重新產生）、`dist`（打包出來的網頁，每次發佈時自動重做）。
@@ -585,7 +597,7 @@ Ch3/
 1. **在 GitHub repo 的 Settings → Pages**，把發佈來源設為「GitHub Actions」。
 2. **網頁的基礎路徑**：GitHub Pages 的網址是 `https://<你的帳號>.github.io/<repo 名稱>/`，多了一層 repo 名稱。打包時要告訴 Vite 這個路徑，否則網頁會找不到自己的檔案，畫面一片空白。這是最常見的部署失敗原因。
 3. **不使用網址路由**：整個網站只有一個頁面，用「目前狀態」決定顯示輸入畫面或聊天室，不用網址切換。這樣重新整理時不會碰到「GitHub Pages 找不到頁面（404）」的問題。
-4. **階段二才需要**：在 GitHub repo 的 Settings → Secrets and variables → Actions，加入專案網址與 anon 金鑰（第 8.4 節）。
+4. **階段二**：在 GitHub repo 的 Settings → Secrets and variables → Actions，加入專案網址與 Publishable key（名稱 `VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY`，第 8.4 節）。發佈流程 `.github/workflows/deploy.yml` 會在打包時帶入這兩個值。這兩個值打包後會出現在公開的網頁檔案裡，這是預期的，它們本來就是可公開的。
 
 ### 發佈後的網址
 
@@ -653,7 +665,7 @@ Ch3/
 **設定**
 
 - [ ] Supabase 專案建立完成，資料表與資料庫規則設定完成
-- [ ] 專案網址與 anon 金鑰放進 `.env.local` 和 GitHub Secrets
+- [ ] 專案網址與 Publishable key 放進 `.env.local` 和 GitHub Secrets
 - [ ] 整個 repo 與 Git 歷史中搜尋，**沒有** service_role 金鑰、資料庫密碼
 - [ ] `git status` 確認 `.env.local` 沒有被追蹤
 
@@ -677,7 +689,7 @@ Ch3/
 
 - [ ] 送出 501 字的訊息：被擋下
 - [ ] 繞過網頁（直接對 Supabase 發請求）送出 501 字或空白訊息：資料庫也拒絕
-- [ ] 用 anon 金鑰嘗試修改、刪除訊息：被拒絕
+- [ ] 用 Publishable key 嘗試修改、刪除訊息：被拒絕
 
 **部署**
 

@@ -134,6 +134,11 @@ export class MockChatService implements ChatService {
     return unsubscribe
   }
 
+  onKicked(): Unsubscribe {
+    // 假資料版不會發生「代號在斷線時被佔走」
+    return () => {}
+  }
+
   // ---- 測試用 ----
 
   readonly debug: MockDebugControls = {

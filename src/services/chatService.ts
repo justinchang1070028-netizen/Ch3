@@ -26,4 +26,9 @@ export interface ChatService {
   onNotice(cb: (notice: Notice) => void): Unsubscribe
   /** 連線狀態變動。訂閱當下會立刻回報一次目前狀態 */
   onConnection(cb: (status: ConnectionStatus) => void): Unsubscribe
+  /**
+   * 斷線重連後發現代號已被別人佔走：服務已自行退出聊天室，畫面要回到輸入代號
+   * （docs/architecture.md 第 6.4 節第 5 點）
+   */
+  onKicked(cb: () => void): Unsubscribe
 }
